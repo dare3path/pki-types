@@ -131,9 +131,29 @@ pub enum PrivateKeyDer<'a> {
     Pkcs8(PrivatePkcs8KeyDer<'a>),
 }
 
+//#[macro_export]
+macro_rules! trace_log {
+    // just a newline
+    () => {
+        #[cfg(feature = "trace_drop_and_zeroize")]
+        eprintln!();
+    };
+    // Single expression (e.g., string literal)
+    ($msg:expr) => {
+        #[cfg(feature = "trace_drop_and_zeroize")]
+        eprintln!("{}", $msg);
+    };
+    // Variadic arguments (e.g., format string and values)
+    ($fmt:expr, $($arg:tt)*) => {
+        #[cfg(feature = "trace_drop_and_zeroize")]
+        eprintln!($fmt, $($arg)*);
+    };
+}
+
 #[cfg(feature = "alloc")]
 impl zeroize::Zeroize for PrivateKeyDer<'static> {
     fn zeroize(&mut self) {
+        trace_log!("!!!! manually calling zeroize on PrivateKeyDer");
         match self {
             Self::Pkcs1(key) => key.zeroize(),
             Self::Sec1(key) => key.zeroize(),
@@ -141,6 +161,76 @@ impl zeroize::Zeroize for PrivateKeyDer<'static> {
         }
     }
 }
+
+#[cfg(feature = "alloc")]
+impl zeroize::ZeroizeOnDrop for PrivateKeyDer<'static> {} // Explicit marker
+
+impl<'a> Drop for PrivateKeyDer<'a> {
+    fn drop(&mut self) {
+        //use zeroize::Zeroize;
+        match self {
+            Self::Pkcs1(key) => {
+                trace_log!("!!!! in drop() of PrivateKeyDer::Pkcs1");
+                if let BytesInner::Owned(vec) = &mut key.0.0 {
+                    trace_log!("!!!!! in drop, zeroizing PrivateKeyDer::Pkcs1's vec");
+                    //vec.zeroize();
+                    //<Vec<u8> as zeroize::Zeroize>::zeroize(vec);
+                    //zeroize::Zeroize::zeroize(vec);
+                    zeroize_vec(vec);
+                } else {
+                    trace_log!("!!!!! in drop, won't zeroize PrivateKeyDer::Pkcs1's borrowed vec");
+                }
+                trace_log!("!!!! done drop() of PrivateKeyDer::Pkcs1");
+            }
+            Self::Sec1(key) => {
+                trace_log!("!!!! in drop() of PrivateKeyDer::Sec1");
+                if let BytesInner::Owned(vec) = &mut key.0.0 {
+                    trace_log!("!!!!! in drop, zeroizing PrivateKeyDer::Sec1's vec");
+                    //vec.zeroize();
+                    //<Vec<u8> as zeroize::Zeroize>::zeroize(vec);
+                    //zeroize::Zeroize::zeroize(vec);
+                    zeroize_vec(vec);
+                } else {
+                    trace_log!("!!!!! in drop, won't zeroize PrivateKeyDer::Sec1's borrowed vec");
+                }
+                trace_log!("!!!! done drop() of PrivateKeyDer::Sec1");
+            }
+            Self::Pkcs8(key) => {
+                trace_log!("!!!! in drop() of PrivateKeyDer::Pkcs8");
+                if let BytesInner::Owned(vec) = &mut key.0.0 {
+                    trace_log!("!!!!! in drop, zeroizing of PrivateKeyDer::Pkcs8's vec");
+                    //vec.zeroize();
+                    //<Vec<u8> as zeroize::Zeroize>::zeroize(vec);
+                    //zeroize::Zeroize::zeroize(vec);
+                    zeroize_vec(vec);
+                } else {
+                    trace_log!("!!!!! in drop, won't zeroize PrivateKeyDer::Pkcs8's borrowed vec");
+                }
+                trace_log!("!!!! done drop() of PrivateKeyDer::Pkcs8");
+            }
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+fn zeroize_vec(vec: &mut Vec<u8>) {
+    // Check if non-zero before
+    #[cfg(feature="trace_drop_and_zeroize")]
+    let was_non_zero = vec.iter().any(|&b| b != 0);
+    zeroize::Zeroize::zeroize(vec);
+    // Verify all zeros after
+    let is_all_zeros = vec.iter().all(|&b| b == 0);
+    #[cfg(feature="trace_drop_and_zeroize")] {
+        if was_non_zero && is_all_zeros {
+            trace_log!("!!!!!! zeroized was needed.");
+        } else {
+            trace_log!("!!!!!! zeroizing was NOT needed.");
+        }
+    }
+    assert!(is_all_zeros, "Zeroize failed to clear Vec<u8>");
+}
+
+
 
 impl PrivateKeyDer<'_> {
     /// Clone the private key to a `'static` value
@@ -283,10 +373,19 @@ impl TryFrom<Vec<u8>> for PrivateKeyDer<'_> {
     type Error = &'static str;
 
     fn try_from(key: Vec<u8>) -> Result<Self, Self::Error> {
-        Ok(match PrivateKeyDer::try_from(&key[..])? {
-            PrivateKeyDer::Pkcs1(_) => Self::Pkcs1(key.into()),
-            PrivateKeyDer::Sec1(_) => Self::Sec1(key.into()),
-            PrivateKeyDer::Pkcs8(_) => Self::Pkcs8(key.into()),
+        let variant = {
+            let result = PrivateKeyDer::try_from(&key[..])?;
+            match result {
+                PrivateKeyDer::Pkcs1(_) => 0,
+                PrivateKeyDer::Sec1(_) => 1,
+                PrivateKeyDer::Pkcs8(_) => 2,
+            }
+        };
+        Ok(match variant {
+            0 => Self::Pkcs1(key.into()),
+            1 => Self::Sec1(key.into()),
+            2 => Self::Pkcs8(key.into()),
+            _ => unreachable!(),
         })
     }
 }
@@ -327,7 +426,25 @@ impl PrivatePkcs1KeyDer<'_> {
 #[cfg(feature = "alloc")]
 impl zeroize::Zeroize for PrivatePkcs1KeyDer<'static> {
     fn zeroize(&mut self) {
+        trace_log!("!!!! manually calling zeroize on PrivatePkcs1KeyDer");
         self.0.0.zeroize()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl zeroize::ZeroizeOnDrop for PrivatePkcs1KeyDer<'static> {} // Explicit marker
+
+#[cfg(feature = "alloc")]
+impl<'a> Drop for PrivatePkcs1KeyDer<'a> {
+    fn drop(&mut self) {
+        trace_log!("!!!! in drop() of PrivatePkcs1KeyDer");
+        if let BytesInner::Owned(vec) = &mut self.0.0 {
+            trace_log!("!!!!! in drop, zeroizing PrivatePkcs1KeyDer's vec");
+            zeroize_vec(vec);
+        } else {
+            trace_log!("!!!!! in drop, won't zeroize PrivatePkcs1KeyDer's borrowed vec");
+        }
+        trace_log!("!!!! done drop() of PrivatePkcs1KeyDer");
     }
 }
 
@@ -394,7 +511,25 @@ impl PrivateSec1KeyDer<'_> {
 #[cfg(feature = "alloc")]
 impl zeroize::Zeroize for PrivateSec1KeyDer<'static> {
     fn zeroize(&mut self) {
+        trace_log!("!!!! manually calling zeroize on PrivateSec1KeyDer");
         self.0.0.zeroize()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl zeroize::ZeroizeOnDrop for PrivateSec1KeyDer<'static> {} // Explicit marker
+
+#[cfg(feature = "alloc")]
+impl<'a> Drop for PrivateSec1KeyDer<'a> {
+    fn drop(&mut self) {
+        trace_log!("!!!! in drop() of PrivateSec1KeyDer");
+        if let BytesInner::Owned(vec) = &mut self.0.0 {
+            trace_log!("!!!!! in drop, zeroizing PrivateSec1KeyDer's vec");
+            zeroize_vec(vec);
+        } else {
+            trace_log!("!!!!! in drop, won't zeroize PrivateSec1KeyDer's borrowed vec");
+        }
+        trace_log!("!!!! done drop() of PrivateSec1KeyDer");
     }
 }
 
@@ -462,7 +597,26 @@ impl PrivatePkcs8KeyDer<'_> {
 #[cfg(feature = "alloc")]
 impl zeroize::Zeroize for PrivatePkcs8KeyDer<'static> {
     fn zeroize(&mut self) {
+        trace_log!("!!!! manually calling zeroize on PrivatePkcs8KeyDer");
         self.0.0.zeroize()
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl zeroize::ZeroizeOnDrop for PrivatePkcs8KeyDer<'static> {} // Explicit marker
+
+#[cfg(feature = "alloc")]
+impl<'a> Drop for PrivatePkcs8KeyDer<'a> {
+    fn drop(&mut self) {
+        trace_log!("!!!! in drop() of PrivatePkcs8KeyDer");
+        if let BytesInner::Owned(vec) = &mut self.0.0 {
+            trace_log!("!!!!! in drop, zeroing PrivatePkcs8KeyDer");
+            //zeroize::Zeroize::zeroize(vec);
+            zeroize_vec(vec);
+        } else {
+            trace_log!("!!!!! in drop, won't zeroize PrivatePkcs8KeyDer's borrowed vec");
+        }
+        trace_log!("!!!! done drop() of PrivatePkcs8KeyDer");
     }
 }
 
@@ -1027,8 +1181,16 @@ enum BytesInner<'a> {
 #[cfg(feature = "alloc")]
 impl BytesInner<'_> {
     fn into_owned(self) -> BytesInner<'static> {
+//        BytesInner::Owned(match self {
+//            Self::Owned(vec) => vec, // original line, won't work due to our Drop impl.
+//            Self::Borrowed(slice) => slice.to_vec(),
+//        })
         BytesInner::Owned(match self {
-            Self::Owned(vec) => vec,
+            Self::Owned(ref vec) => {
+                trace_log!("!!! making a BytesInner's vec clone.");
+                //FIXME: need a better way
+                vec.clone()
+            },
             Self::Borrowed(slice) => slice.to_vec(),
         })
     }
@@ -1038,11 +1200,36 @@ impl BytesInner<'_> {
 impl zeroize::Zeroize for BytesInner<'static> {
     fn zeroize(&mut self) {
         match self {
-            BytesInner::Owned(vec) => vec.zeroize(),
-            BytesInner::Borrowed(_) => (),
+            BytesInner::Owned(vec) => {
+                trace_log!("!!!! manually calling zeroize on BytesInner::Owned");
+                vec.zeroize()
+            },
+            BytesInner::Borrowed(_) => {
+                trace_log!("!!!! manually but NOT calling zeroize on BytesInner::Borrowed");
+                ()
+            },
         }
     }
 }
+
+#[cfg(feature = "alloc")]
+impl zeroize::ZeroizeOnDrop for BytesInner<'static> {} // Explicit marker
+
+#[cfg(feature = "alloc")]
+impl<'a> Drop for BytesInner<'a> {
+    fn drop(&mut self) {
+        //zeroize::Zeroize::zeroize(self);// won't work due to lifetimes
+        trace_log!("!!!! in drop() of BytesInner");
+        if let BytesInner::Owned(vec) = self {
+            trace_log!("!!!!! in drop, zeroizing BytesInner's vec");
+            zeroize_vec(vec);
+        } else {
+            trace_log!("!!!!! in drop, won't zeroize BytesInner's borrowed vec");
+        }
+        trace_log!("!!!! done dropping BytesInner");
+    }
+}
+
 
 impl AsRef<[u8]> for BytesInner<'_> {
     fn as_ref(&self) -> &[u8] {
@@ -1072,6 +1259,7 @@ fn hex<'a>(f: &mut fmt::Formatter<'_>, payload: impl IntoIterator<Item = &'a u8>
     }
     Ok(())
 }
+
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
@@ -1118,4 +1306,99 @@ mod tests {
         assert_ne!(owned_a, borrowed_b);
         assert_ne!(borrowed_b, owned_a);
     }
-}
+
+
+    #[test]
+    fn test_has_zeroize_method() {
+        const fn assert_zeroize<T: zeroize::Zeroize>() {}
+        assert_zeroize::<PrivatePkcs8KeyDer<'static>>();
+        assert_zeroize::<PrivateKeyDer<'static>>();
+        assert_zeroize::<PrivatePkcs1KeyDer<'static>>();
+        assert_zeroize::<PrivateSec1KeyDer<'static>>();
+        assert_zeroize::<BytesInner<'static>>();
+    }
+
+    #[test]
+    fn test_does_zeroize_on_drop() {
+        const fn assert_zeroize<T: zeroize::Zeroize + zeroize::ZeroizeOnDrop>() {}
+        assert_zeroize::<PrivatePkcs8KeyDer<'static>>();
+        assert_zeroize::<PrivateKeyDer<'static>>();
+        assert_zeroize::<PrivatePkcs1KeyDer<'static>>();
+        assert_zeroize::<PrivateSec1KeyDer<'static>>();
+        assert_zeroize::<BytesInner<'static>>();
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    /// for no tracing, run with: $ cargo test --features='alloc,std' test_bytes_inner_into_owned_drops
+    /// for tracing, run with: $ cargo test --features='trace_drop_and_zeroize' test_bytes_inner_into_owned_drops -- --nocapture
+    fn test_bytes_inner_into_owned_drops() {
+        // Create a BytesInner::Owned with non-zero data
+        let data = alloc::vec![1, 2, 3, 4];
+        let bytes_inner = BytesInner::Owned(data.clone());
+
+        // Call into_owned
+        trace_log!("Calling into_owned");
+        let owned = bytes_inner.into_owned();
+        trace_log!("After into_owned, original should be dropped");
+
+        // Verify owned contains the same data
+        if let BytesInner::Owned(ref vec) = owned {
+            assert_eq!(vec, &data);
+        } else {
+            panic!("Expected BytesInner::Owned");
+        }
+
+        // Drop owned explicitly to trigger its Drop
+        trace_log!("\nDropping owned BytesInner");
+        drop(owned);
+
+
+        trace_log!();
+        let borrowed_data = [5, 6, 7, 8];
+        let bytes_inner = BytesInner::Borrowed(&borrowed_data);
+        trace_log!("Calling into_owned for Borrowed");
+        let owned = bytes_inner.into_owned();
+        trace_log!("After into_owned, Borrowed should NOT be zeroed");
+        if let BytesInner::Owned(ref vec) = owned {
+            assert_eq!(vec, &borrowed_data);
+        } else {
+            panic!("Expected BytesInner::Owned");
+        }
+        assert_eq!(borrowed_data, [5, 6, 7, 8]);
+        trace_log!("\nDropping owned BytesInner from Borrowed");
+        drop(owned);
+    }
+
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn test_bytes_inner_non_static_zeroize() {
+        use zeroize::Zeroize;
+        // Create a non-'static scope
+        let borrowed_data = vec![1, 2, 3, 4];
+        {
+            let mut _bytes_inner = BytesInner::Borrowed(&borrowed_data);
+            //let mut _bytes_inner = BytesInner::Borrowed(borrowed_data);
+            // Try to call zeroize explicitly
+            // This should fail to compile because Zeroize is only for 'static
+            //_bytes_inner.zeroize(); // Uncomment to see compile error
+            trace_log!("Created BytesInner::Borrowed with non-'static lifetime");
+        }
+        // Verify borrowed_data is unchanged
+        assert_eq!(borrowed_data, vec![1, 2, 3, 4]);
+
+        // Test with Owned data
+        {
+            let vec:Vec<u8>=vec![5, 6, 7, 8];
+            let mut bytes_inner = BytesInner::Owned(vec);
+            trace_log!("Created BytesInner::Owned (effectively 'static)");
+            // This also fails to compile because Zeroize is for 'static
+            bytes_inner.zeroize(); // works
+            if let BytesInner::Owned(ref vec) = bytes_inner {
+                assert!(vec.iter().all(|&b| b == 0), "Vec not zeroed");
+            }
+        }
+        // Drop happens via Drop impl, not Zeroize
+        trace_log!("Non-'static BytesInner dropped, should zero Owned data");
+    }
+}//mod tests

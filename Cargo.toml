@@ -15,6 +15,7 @@ default = ["alloc"]
 alloc = ["dep:zeroize"]
 std = ["alloc"]
 web = ["web-time"]
+trace_drop_and_zeroize = ["std", "alloc"]
 
 [dependencies]
 zeroize = { version = "1", optional = true }
