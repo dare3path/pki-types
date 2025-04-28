@@ -214,6 +214,10 @@ impl<'a> Drop for PrivateKeyDer<'a> {
 
 #[cfg(feature = "alloc")]
 fn zeroize_vec(vec: &mut Vec<u8>) {
+    #[cfg(feature="trace_drop_and_zeroize")]
+    if vec.len()==0 {
+        trace_log!("!!!!!! vector is empty, nothing to zeroize");
+    }
     // Check if non-zero before
     #[cfg(feature="trace_drop_and_zeroize")]
     let was_non_zero = vec.iter().any(|&b| b != 0);
@@ -1400,5 +1404,13 @@ mod tests {
         }
         // Drop happens via Drop impl, not Zeroize
         trace_log!("Non-'static BytesInner dropped, should zero Owned data");
+    }
+    #[test]
+    #[cfg(feature = "alloc")]
+    fn test_empty_vec_zeroize() {
+        {
+            let vec:Vec<u8>=vec![];
+            let _bytes_inner = BytesInner::Owned(vec);
+        }
     }
 }//mod tests
