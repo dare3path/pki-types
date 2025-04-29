@@ -165,6 +165,7 @@ impl zeroize::Zeroize for PrivateKeyDer<'static> {
 #[cfg(feature = "alloc")]
 impl zeroize::ZeroizeOnDrop for PrivateKeyDer<'static> {} // Explicit marker
 
+#[cfg(feature = "alloc")]
 impl<'a> Drop for PrivateKeyDer<'a> {
     fn drop(&mut self) {
         //use zeroize::Zeroize;
