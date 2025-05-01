@@ -227,7 +227,7 @@ fn zeroize_vec(vec: &mut Vec<u8>) {
     let is_all_zeros = vec.iter().all(|&b| b == 0);
     #[cfg(feature="trace_drop_and_zeroize")] {
         if was_non_zero && is_all_zeros {
-            trace_log!("!!!!!! zeroized was needed.");
+            trace_log!("!!!!!! zeroize was needed.");
         } else {
             trace_log!("!!!!!! zeroizing was NOT needed.");
         }
